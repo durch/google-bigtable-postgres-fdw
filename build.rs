@@ -43,7 +43,7 @@ fn pg_config() -> PGConfig {
 fn main() {
     let config = pg_config();
     gcc::Config::new()
-                .file("src/magic.c")
+                .file("src/bt_fdw.c")
                 .include(config.includedir)
                 .include(config.includedir_server)
                 .compile("libmagic.a");
