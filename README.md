@@ -4,7 +4,7 @@
 
 [Rust](https://www.rust-lang.org/en-US/) [PostgreSQL](https://www.postgresql.org/) foreign data wrapper for interfacing with [Google Cloud Bigtable](https://cloud.google.com/bigtable/), as well as other API compatible databases ([HBase](https://hbase.apache.org/) should work with some effort).
 
-While logic is contained in `Rust`, it leverages `PostgreSQL ` `C` FDW callbacks.
+While logic is contained in `Rust`, it leverages `PostgreSQL` `C` `FDW` callbacks.
 
 ### Roadmap
 
@@ -17,6 +17,7 @@ While logic is contained in `Rust`, it leverages `PostgreSQL ` `C` FDW callbacks
 - [ ] `DELETE`
 
 ## Installation
+
 + `PostgreSQL 9.6+`
 + `Stable Rust 1.15+`, get it using [rustup](https://www.rustup.rs/).
 
