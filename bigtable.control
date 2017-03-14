@@ -1,5 +1,5 @@
 # base36 extension in rust
 comment = 'Rust extension for interfaceing with Google Bigtable from PostgreSQL'
-default_version = '0.0.1'
+default_version = '0.1.0'
 module_pathname = '$libdir/bigtable_pg_ext'
 relocatable = true

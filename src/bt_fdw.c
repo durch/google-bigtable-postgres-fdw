@@ -49,6 +49,7 @@ btGetForeignRelSize(PlannerInfo *root,
                     RelOptInfo *baserel,
                     Oid foreigntableid) {
     elog(LOG, "entering function %s", __func__);
+
     baserel->rows = 500;
 }
 
@@ -86,6 +87,8 @@ btGetForeignPlan(PlannerInfo *root,
     elog(LOG, "entering function %s", __func__);
 
     Index scan_relid = baserel->relid;
+
+    get_limit(root);
 
     scan_clauses = extract_actual_clauses(scan_clauses, false);
 

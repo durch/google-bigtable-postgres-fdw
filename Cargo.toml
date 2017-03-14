@@ -20,5 +20,7 @@ protobuf = "1.0.24"
 rustc-serialize = "0.3.22"
 goauth = "0.2.12"
 
+lazy_static = "0.2.4"
+
 [build-dependencies]
 gcc = "*"

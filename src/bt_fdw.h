@@ -97,6 +97,9 @@ bt_fdw_iterate_foreign_scan(bt_fdw_state_t *, ForeignScanState *);
 extern void *
 bt_fdw_exec_foreign_insert(bt_fdw_state_t *, TupleTableSlot *, char *);
 
+extern void *
+get_limit(PlannerInfo *);
+
 /*
  * FDW functions declarations
  */

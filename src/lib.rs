@@ -14,7 +14,7 @@ use goauth::credentials::Credentials;
 use std::io::prelude::*;
 use std::fs::File;
 use std::ffi::{CString, CStr};
-use libc::c_char;
+use libc::{c_char, c_int};
 use bt::wraps;
 use bt::method::SampleRowKeys;
 use bt::request::BTRequest;
@@ -26,6 +26,10 @@ mod error;
 mod pg;
 
 use error::BTErr;
+
+
+static mut LIMIT: Option<i64> = Some(0);
+
 
 fn get_ptr<'a>(p: *const c_char, l: usize) -> &'a [u8] {
     unsafe { &CStr::from_ptr(p).to_bytes()[0..l] }
@@ -182,7 +186,9 @@ fn bt_table(credentials: Result<Credentials, BTErr>,
 #[derive(Debug)]
 pub struct BtFdwState {
     token: Result<Token, BTErr>,
-    user: FdwUser
+    user: FdwUser,
+    has_data: bool,
+    data: FdwSelectData
 }
 
 impl BtFdwState {
@@ -224,7 +230,7 @@ impl FdwUser {
             assert!(!fu.is_null());
             *fu
         };
-        let opts = extract_options(fuser.options, &valid_options.as_slice());
+        let opts = extract_options(fuser.options, Some(&valid_options.as_slice()));
         let creds = Credentials::from_file(&get_option("credentials_path", &opts.as_slice()).unwrap().value).unwrap();
         FdwUser {
             id: fuser.userid,
@@ -259,7 +265,7 @@ impl From<Relation> for FdwTable {
         };
         FdwTable {
             id: ftable.relid,
-            options: extract_options(ftable.options, &valid_options),
+            options: extract_options(ftable.options, Some(&valid_options)),
             valid_options: valid_options,
             relation: rel,
             server_id:
@@ -286,7 +292,7 @@ impl From<FdwTable> for FdwServer {
         };
         FdwServer {
             id: fserver.serverid,
-            options: extract_options(fserver.options, &valid_options),
+            options: extract_options(fserver.options, Some(&valid_options)),
             valid_options: valid_options,
             table: table
         }
@@ -353,7 +359,8 @@ impl From<*mut pg::RelationData> for Relation {
 
 #[derive(Debug)]
 struct Node {
-    relation: Relation
+    relation: Relation,
+    options: Vec<FdwOpt>
 }
 
 impl From<*mut pg::ForeignScanState> for Node {
@@ -362,7 +369,12 @@ impl From<*mut pg::ForeignScanState> for Node {
             assert!(!fss.is_null());
             Relation::from((*fss).ss.ss_currentRelation)
         };
-        Node { relation: relation }
+        let opts = unsafe {
+            let opt_list = (*fss).fdw_recheck_quals;
+            extract_options(opt_list, None)
+        };
+        //        println!("{:?}", opts);
+        Node { relation: relation, options: opts }
     }
 }
 
@@ -372,7 +384,7 @@ impl From<*mut pg::ResultRelInfo> for Node {
             assert!(!rri.is_null());
             Relation::from((*rri).ri_RelationDesc)
         };
-        Node { relation: relation }
+        Node { relation: relation, options: Vec::new() }
     }
 }
 
@@ -382,31 +394,48 @@ pub extern fn bt_fdw_state_free(ptr: *mut BtFdwState) {
     unsafe { Box::from_raw(ptr); }
 }
 
-fn extract_options(opts: *mut pg::List, opts_to_get: &[String]) -> Vec<FdwOpt> {
+fn extract_options(opts: *mut pg::List, opts_to_get: Option<&[String]>) -> Vec<FdwOpt> {
+    if opts.is_null() {
+        return Vec::new()
+    }
     let mut out_opts = Vec::new();
-    let opts = unsafe {
+    let ls = unsafe {
         assert!(!opts.is_null());
         *opts
     };
-    let l = opts.length;
-    for opt in 0..l {
-        let cell;
-        let def;
-        unsafe {
-            let cell_ptr = pg::list_nth_cell(&opts, opt);
-            assert!(!cell_ptr.is_null());
-            cell = (*cell_ptr).data.ptr_value.as_mut();
-            def = *cell as *mut pg::DefElem;
-        };
+    let l = ls.length;
+    for idx in 0..l {
+        let def = cell_to_def(&ls, idx);
         let opt = FdwOpt::from(def);
-        for opt_to_get in opts_to_get {
-            if opt_to_get == opt.name() {
-                out_opts.push(opt);
-                break;
-            }
+        match opts_to_get {
+            Some(opts) => {
+                match get_opt_if_allowed(opts, opt) {
+                    Some(o) => out_opts.push(o),
+                    None => {}
+                }
+            },
+            None => out_opts.push(opt)
         }
     }
     out_opts
+}
+
+fn cell_to_def(ls: &pg::List, idx: c_int) -> *mut pg::DefElem {
+    unsafe {
+        let cell_ptr = pg::list_nth_cell(ls, idx);
+        assert!(!cell_ptr.is_null());
+        let cell = (*cell_ptr).data.ptr_value.as_mut();
+        *cell as *mut pg::DefElem
+    }
+}
+
+fn get_opt_if_allowed(opts_to_get: &[String], opt: FdwOpt) -> Option<FdwOpt> {
+    for opt_to_get in opts_to_get {
+        if opt_to_get == opt.name() {
+            return Some(opt);
+        }
+    }
+    return None
 }
 
 // Generics are hard in C :)
@@ -427,7 +456,12 @@ fn bt_fdw_state_new<T>(curruser: pg::Oid, node: T) -> *mut BtFdwState
     let fserver = FdwServer::from(ftable);
     let fuser = FdwUser::from(fserver, curruser);
 
-    Box::into_raw(Box::new(BtFdwState { token: fuser.authenticate(), user: fuser }))
+    Box::into_raw(Box::new(BtFdwState {
+        token: fuser.authenticate(),
+        user: fuser,
+        has_data: false,
+        data: FdwSelectData { chunks: Vec::new() }
+    }))
 }
 
 
@@ -438,6 +472,7 @@ struct FdwInsData {
     column_qualifier: String,
     data: Vec<serde_json::Value>
 }
+
 
 #[no_mangle]
 pub extern "C" fn bt_fdw_exec_foreign_insert(state: *mut BtFdwState, slot: *mut pg::TupleTableSlot, data: *const c_char) {
@@ -458,47 +493,81 @@ pub extern "C" fn bt_fdw_exec_foreign_insert(state: *mut BtFdwState, slot: *mut 
         Ok(ref x) => x,
         Err(ref e) => panic!(e)
     };
-     match write_rows(
+    match write_rows(
         Ok(t_data),
         Ok(&fdw_data.column),
         Ok(&fdw_data.column_qualifier),
         Some(&fdw_data.row_key),
         token,
         Ok(bt_fdw_state.table())) {
-         Ok(x) => println!("{:?}",x),
-         Err(e) => println!("{:?}", e)
-     }
+        Ok(x) => println!("{:?}", x),
+        Err(e) => println!("{:?}", e)
+    }
+}
 
+#[derive(Debug, Serialize, Deserialize)]
+struct FdwSelectData {
+    chunks: Vec<serde_json::Value>
+}
 
+impl From<serde_json::Value> for FdwSelectData {
+    fn from(json: serde_json::Value) -> Self {
+        let mut r: Vec<FdwSelectData> = match serde_json::from_value(json){
+            Ok(x) => x,
+            Err(e) => panic!(e)
+        };
+        match r.pop() {
+            Some(x) => x,
+            None => panic!("Got empty array")
+        }
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn bt_fdw_iterate_foreign_scan(state: *mut BtFdwState, node: *mut pg::ForeignScanState) {
-    let bt_fdw_state = unsafe {
+    let mut bt_fdw_state = unsafe {
         assert!(!state.is_null());
-        &*state
+        &mut *state
     };
-    let att;
-    let slot;
     let token = match bt_fdw_state.token {
         Ok(ref x) => x,
         Err(ref e) => panic!(e)
     };
-    println!("{:?}", sample_row_keys(&token, bt_fdw_state.table()));
-    let row = read_rows(
-        Ok(bt_fdw_state.table()),
-        &token,
-        Some(100)
-    ).unwrap();
+    if !bt_fdw_state.has_data {
+        let l = unsafe { LIMIT };
+        let data: serde_json::Value = match wraps::read_rows(bt_fdw_state.table(), token, l) {
+            Ok(x) => x,
+            Err(e) => panic!(e)
+        };
+        bt_fdw_state.data = FdwSelectData::from(data);
+        bt_fdw_state.has_data = true
+    }
+
+    let row = bt_fdw_state.data.chunks.pop();
+
+    let att;
+    let slot;
+
     unsafe {
         let relation = (*node).ss.ss_currentRelation;
         att = (*relation).rd_att;
         slot = (*node).ss.ss_ScanTupleSlot;
         pg::ExecClearTuple(slot);
     }
+    match row {
+        Some(ref r) => match serde_json::to_string(r) {
+            Ok(s) => assign_slot(slot, att, s),
+            Err(e) => panic!(e)
+        },
+        None => {}
+    }
+}
+
+fn assign_slot(slot: *mut pg::TupleTableSlot, att: *mut pg::tupleDesc, v: String) {
     unsafe {
+        let t = CString::from_vec_unchecked(v.into_bytes());
         let attinmeta = pg::TupleDescGetAttInMetadata(att);
-        let tuple = pg::BuildTupleFromCStrings(attinmeta, &mut row.into_raw());
+        let tuple = pg::BuildTupleFromCStrings(attinmeta, &mut t.into_raw());
         pg::ExecStoreTuple(tuple, slot, 0, 0);
     }
 }
@@ -512,5 +581,18 @@ fn sample_row_keys(token: &Token, table: Table) -> Result<serde_json::Value, BTE
     let response = req.execute(token)?;
     Ok(response)
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn get_limit(plan_info: *mut pg::PlannerInfo) {
+    let limit = (*plan_info).limit_tuples;
+    LIMIT = {
+        if limit == -1. {
+            None
+        } else {
+            Some(limit as i64)
+        }
+    };
+}
+
 
 

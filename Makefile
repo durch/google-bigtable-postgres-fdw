@@ -1,5 +1,5 @@
 EXTENSION    = bigtable
-EXTVERSION   = 0.0.1
+EXTVERSION   = 0.1.0
 
 DATA         = sql/$(EXTENSION)--$(EXTVERSION).sql
 PG_CONFIG    = pg_config
