@@ -8,13 +8,13 @@ While logic is contained in `Rust`, it leverages `PostgreSQL ` `C` FDW callbacks
 
 ### Roadmap
 
-- [x] `select`
-- [x] `select limit`
-- [ ] `select offset`
-- [ ] `select where`
-- [x] `insert`
-- [ ] `update`
-- [ ] `delete`
+- [x] `SELECT`
+- [x] `SELECT LIMIT`
+- [ ] `SELECT OFFSET`
+- [ ] `SELECT WHERE`
+- [x] `INSERT`
+- [ ] `UPDATE`
+- [ ] `DELETE`
 
 ## Installation
 + `PostgreSQL 9.6+`
@@ -29,7 +29,7 @@ psql -U postgres
 
 ### Initial DB setup
 
-```plpgsql
+```PLpgSQL
 CREATE EXTENSION bigtable;
 CREATE SERVER test FOREIGN DATA WRAPPER bigtable OPTIONS (instance '`instance_id`', project '`project_id`');
 CREATE FOREIGN TABLE test(bt json) SERVER test OPTIONS (name '`table_name`');
@@ -38,7 +38,7 @@ CREATE USER MAPPING FOR postgres SERVER TEST OPTIONS (credentials_path '`path_to
 
 ### Usage
 
-You can use [gen.py]() to generate some test data. Modify `gen.py` to adjust for the number of generated records, also modify the`column` key in the generated output as this needs be a `column familly` that **exists** in your Bigtable, running `python gen.py` outputs `test.sql`, which can be fed into PG. `WHERE` is evaluted on the PG side so be sure to grab what you need from BT.
+You can use [gen.py]( google-bigtable-postgres-fdw/gen.py ) to generate some test data. Modify `gen.py` to adjust for the number of generated records, also modify the`column` key in the generated output as this needs be a `column familly` that **exists** in your Bigtable, running `python gen.py` outputs `test.sql`, which can be fed into PG. `WHERE` is evaluted on the PG side so be sure to grab what you need from BT.
 
 ```
 psql -U postgres < test.sql
@@ -48,7 +48,7 @@ psql -U postgres < test.sql
 
 One Bigtable row per PG rowis returned, limit is done on the BT side, rows are returned as `json` and can be further manipulated using Postgres `json` [functions and operators](`https://www.postgresql.org/docs/9.6/static/functions-json.html`).
 
-```
+```PLpgSQL
 SELECT * FROM test;
 SELECT * FROM test LIMIT 100;
 
