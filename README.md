@@ -1,6 +1,8 @@
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/durch/rpg_base36/blob/master/LICENSE.md)
 
-# Google Bigtable Rust PostgreSQL Extension
+# Google Bigtable Rust PostgreSQL FDW
+
+## IGNORE DOCS BELOW, PROPER ONES COMING SOON :)
 
 [Rust](https://www.rust-lang.org/en-US/) [PostgreSQL](https://www.postgresql.org/) extension for interfacing with [Google Cloud Bigtable](https://cloud.google.com/bigtable/), as well as other API compatible databases ([HBase](https://hbase.apache.org/) should work with some effort).
 

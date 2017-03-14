@@ -11,3 +11,7 @@ sql/*--0.0.1.sql
 /drazens-bigtable-testing.pk
 !/drazens-bigtable-testing-9f32bd2aa193.json
 /drazens-bigtable-testing-9f32bd2aa193.json
+/src/magic.c
+cmake-build-debug/
+Would skip repository rpgffi/
+src/ldap.c
