@@ -7,13 +7,14 @@
 While logic is contained in `Rust`, it leverages `PostgreSQL ` `C` FDW callbacks.
 
 ### Roadmap
-[x] `select`
-[x] `select limit`
-[ ] `select offset`
-[ ] `select where`
-[x] `insert`
-[ ] `update`
-[ ] `delete`
+
+- [x] `select`
+- [x] `select limit`
+- [ ] `select offset`
+- [ ] `select where`
+- [x] `insert`
+- [ ] `update`
+- [ ] `delete`
 
 ## Installation
 + `PostgreSQL 9.6+`
