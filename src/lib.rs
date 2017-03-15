@@ -1,5 +1,4 @@
 extern crate libc;
-//extern crate pgffi as pg;
 #[macro_use]
 extern crate serde_derive;
 extern crate bigtable as bt;
@@ -23,13 +22,16 @@ use bt::support::{Project, Instance, Table};
 use serde_json::Value;
 
 mod error;
-mod pg;
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
+#[allow(improper_ctypes)]
+#[allow(non_snake_case)]
+#[allow(non_upper_case_globals)]
+mod pg; // Generated PG bindings
 
 use error::BTErr;
 
-
 static mut LIMIT: Option<i64> = Some(0);
-
 
 fn get_ptr<'a>(p: *const c_char, l: usize) -> &'a [u8] {
     unsafe { &CStr::from_ptr(p).to_bytes()[0..l] }
@@ -334,14 +336,18 @@ impl From<*mut pg::DefElem> for FdwOpt {
             assert!(!str_ptr.is_null());
             str_val = CStr::from_ptr(str_ptr);
         }
-        FdwOpt { name: defname.to_str().unwrap().to_string(), value: str_val.to_str().unwrap().to_string() }
+        FdwOpt {
+            name: defname.to_str().unwrap().to_string(),
+            value: str_val.to_str().unwrap().to_string()
+        }
     }
 }
 
 #[derive(Debug)]
 struct Relation {
     id: pg::Oid,
-    pg_rel: pg::RelationData
+    pg_rel: pg::RelationData,
+    rel_rd_att: pg::tupleDesc
 }
 
 impl From<*mut pg::RelationData> for Relation {
@@ -350,9 +356,11 @@ impl From<*mut pg::RelationData> for Relation {
             assert!(!rd.is_null());
             *rd
         };
+        let att = unsafe { *rd.rd_att };
         Relation {
             id: rd.rd_id,
-            pg_rel: rd
+            pg_rel: rd,
+            rel_rd_att: att
         }
     }
 }
@@ -360,7 +368,19 @@ impl From<*mut pg::RelationData> for Relation {
 #[derive(Debug)]
 struct Node {
     relation: Relation,
-    options: Vec<FdwOpt>
+    options: Vec<FdwOpt>,
+    slot: Option<pg::TupleTableSlot>
+}
+
+impl Node {
+    fn assign_slot(&mut self, v: String) {
+        unsafe {
+            let t = CString::from_vec_unchecked(v.into_bytes());
+            let attinmeta = pg::TupleDescGetAttInMetadata(&mut self.relation.rel_rd_att);
+            let tuple = pg::BuildTupleFromCStrings(attinmeta, &mut t.into_raw());
+            pg::ExecStoreTuple(tuple, &mut self.slot.expect("No slot avaliable, this should not happen, Node likely spawned from wrong type, check From"), 0, 0);
+        }
+    }
 }
 
 impl From<*mut pg::ForeignScanState> for Node {
@@ -369,12 +389,18 @@ impl From<*mut pg::ForeignScanState> for Node {
             assert!(!fss.is_null());
             Relation::from((*fss).ss.ss_currentRelation)
         };
+        let slot = unsafe {
+            *(*fss).ss.ss_ScanTupleSlot
+        };
         let opts = unsafe {
             let opt_list = (*fss).fdw_recheck_quals;
             extract_options(opt_list, None)
         };
-        //        println!("{:?}", opts);
-        Node { relation: relation, options: opts }
+        Node {
+            relation: relation,
+            options: opts,
+            slot: Some(slot)
+        }
     }
 }
 
@@ -384,12 +410,16 @@ impl From<*mut pg::ResultRelInfo> for Node {
             assert!(!rri.is_null());
             Relation::from((*rri).ri_RelationDesc)
         };
-        Node { relation: relation, options: Vec::new() }
+        Node {
+            relation: relation,
+            options: Vec::new(),
+            slot: None
+        }
     }
 }
 
 #[no_mangle]
-pub extern fn bt_fdw_state_free(ptr: *mut BtFdwState) {
+pub extern "C" fn bt_fdw_state_free(ptr: *mut BtFdwState) {
     if ptr.is_null() { return }
     unsafe { Box::from_raw(ptr); }
 }
@@ -512,14 +542,11 @@ struct FdwSelectData {
 
 impl From<serde_json::Value> for FdwSelectData {
     fn from(json: serde_json::Value) -> Self {
-        let mut r: Vec<FdwSelectData> = match serde_json::from_value(json){
+        let mut r: Vec<FdwSelectData> = match serde_json::from_value(json) {
             Ok(x) => x,
             Err(e) => panic!(e)
         };
-        match r.pop() {
-            Some(x) => x,
-            None => panic!("Got empty array")
-        }
+        r.pop().expect("Cannot build FdwSelectData from empty array")
     }
 }
 
@@ -545,32 +572,20 @@ pub extern "C" fn bt_fdw_iterate_foreign_scan(state: *mut BtFdwState, node: *mut
 
     let row = bt_fdw_state.data.chunks.pop();
 
-    let att;
-    let slot;
-
+    let mut node = Node::from(node);
     unsafe {
-        let relation = (*node).ss.ss_currentRelation;
-        att = (*relation).rd_att;
-        slot = (*node).ss.ss_ScanTupleSlot;
-        pg::ExecClearTuple(slot);
+        pg::ExecClearTuple(&mut node.slot.expect("Expected TupleTableSlot, got None"));
     }
     match row {
         Some(ref r) => match serde_json::to_string(r) {
-            Ok(s) => assign_slot(slot, att, s),
+            Ok(s) => node.assign_slot(s),
             Err(e) => panic!(e)
         },
+        // leave slot empty, signal postgres everything is fetched
         None => {}
     }
 }
 
-fn assign_slot(slot: *mut pg::TupleTableSlot, att: *mut pg::tupleDesc, v: String) {
-    unsafe {
-        let t = CString::from_vec_unchecked(v.into_bytes());
-        let attinmeta = pg::TupleDescGetAttInMetadata(att);
-        let tuple = pg::BuildTupleFromCStrings(attinmeta, &mut t.into_raw());
-        pg::ExecStoreTuple(tuple, slot, 0, 0);
-    }
-}
 
 fn sample_row_keys(token: &Token, table: Table) -> Result<serde_json::Value, BTErr> {
     let req = BTRequest {
@@ -593,6 +608,3 @@ pub unsafe extern "C" fn get_limit(plan_info: *mut pg::PlannerInfo) {
         }
     };
 }
-
-
-
