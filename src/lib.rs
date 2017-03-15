@@ -310,6 +310,15 @@ fn get_option(target: &str, options: &[FdwOpt]) -> Option<FdwOpt> {
     None
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct FdwRow {
+    row_key: String,
+    column: String,
+    column_qualifier: String,
+    timestamp: u64,
+    text_value: Option<String>
+}
+
 #[derive(Debug, Clone)]
 struct FdwOpt {
     name: String,
@@ -369,7 +378,7 @@ impl From<*mut pg::RelationData> for Relation {
 struct Node {
     relation: Relation,
     options: Vec<FdwOpt>,
-    slot: Option<pg::TupleTableSlot>
+    slot: Option<*mut pg::TupleTableSlot>
 }
 
 impl Node {
@@ -378,7 +387,7 @@ impl Node {
             let t = CString::from_vec_unchecked(v.into_bytes());
             let attinmeta = pg::TupleDescGetAttInMetadata(&mut self.relation.rel_rd_att);
             let tuple = pg::BuildTupleFromCStrings(attinmeta, &mut t.into_raw());
-            pg::ExecStoreTuple(tuple, &mut self.slot.expect("No slot avaliable, this should not happen, Node likely spawned from wrong type, check From"), 0, 0);
+            pg::ExecStoreTuple(tuple, self.slot.expect("No slot avaliable, this should not happen, Node likely spawned from wrong type, check From"), 0, 0);
         }
     }
 }
@@ -390,7 +399,7 @@ impl From<*mut pg::ForeignScanState> for Node {
             Relation::from((*fss).ss.ss_currentRelation)
         };
         let slot = unsafe {
-            *(*fss).ss.ss_ScanTupleSlot
+            (*fss).ss.ss_ScanTupleSlot
         };
         let opts = unsafe {
             let opt_list = (*fss).fdw_recheck_quals;
@@ -536,12 +545,26 @@ pub extern "C" fn bt_fdw_exec_foreign_insert(state: *mut BtFdwState, slot: *mut 
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct FdwError {
+    code: i32,
+    message: String,
+    status: String
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FdwErrorObj {
+    error: Vec<FdwError>
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct FdwSelectData {
     chunks: Vec<serde_json::Value>
 }
 
+// TODO: Error propagation
 impl From<serde_json::Value> for FdwSelectData {
     fn from(json: serde_json::Value) -> Self {
+//        println!("{:?}", json);
         let mut r: Vec<FdwSelectData> = match serde_json::from_value(json) {
             Ok(x) => x,
             Err(e) => panic!(e)
@@ -574,8 +597,9 @@ pub extern "C" fn bt_fdw_iterate_foreign_scan(state: *mut BtFdwState, node: *mut
 
     let mut node = Node::from(node);
     unsafe {
-        pg::ExecClearTuple(&mut node.slot.expect("Expected TupleTableSlot, got None"));
+        pg::ExecClearTuple(node.slot.expect("Expected TupleTableSlot, got None"));
     }
+    println!("{:?}", row);
     match row {
         Some(ref r) => match serde_json::to_string(r) {
             Ok(s) => node.assign_slot(s),

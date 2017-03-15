@@ -13,7 +13,7 @@ def id_gen(N=64):
 def coord_gen(rng=90):
     return random.randint(rng*-1, rng)
 
-if __name__ = "__main__":
+if __name__ == "__main__":
 
     l = [{"id": id_gen(), "lat": coord_gen(90), "lng": coord_gen(180)} for _ in xrange(N_RECORDS)]
 
