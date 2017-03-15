@@ -15,6 +15,7 @@ While logic is contained in `Rust`, it leverages `PostgreSQL` `C` `FDW` callback
 - [x] `INSERT`
 - [ ] `UPDATE`
 - [ ] `DELETE`
+- [ ] `FOREIGN SCHEMA`, abandon funny `INSERT` format
 
 ## Installation
 
