@@ -8,6 +8,7 @@ use std::io::Error as io_err;
 use rustc_serialize::base64::FromBase64Error as b64_err;
 use std::ffi::CString;
 use std::error::Error;
+use std::string::FromUtf8Error as utf_err;
 
 
 macro_rules! impl_from {
@@ -28,7 +29,8 @@ pub enum BTErr {
     NullErr(null_err),
     BTEr(bt_err),
     B64Err(b64_err),
-    IOErr(io_err)
+    IOErr(io_err),
+    UtfErr(utf_err)
 }
 
 impl_from!(go_err, GOErr);
@@ -38,6 +40,7 @@ impl_from!(null_err, NullErr);
 impl_from!(bt_err, BTEr);
 impl_from!(b64_err, B64Err);
 impl_from!(io_err, IOErr);
+impl_from!(utf_err, UtfErr);
 
 impl BTErr {
     fn core<'a>(&self) -> &'a str {
@@ -49,6 +52,7 @@ impl BTErr {
             BTErr::BTEr(_) => "Bigtable Err",
             BTErr::B64Err(_) => "Base64 Err",
             BTErr::IOErr(_) => "IO Err",
+            BTErr::UtfErr(_) => "Utf Err",
         }
     }
 }
@@ -63,6 +67,7 @@ impl std::fmt::Display for BTErr {
             BTErr::BTEr(ref e) => e.fmt(f),
             BTErr::B64Err(ref e) => e.fmt(f),
             BTErr::IOErr(ref e) => e.fmt(f),
+            BTErr::UtfErr(ref e) => e.fmt(f),
         }
     }
 }
@@ -77,6 +82,7 @@ impl std::error::Error for BTErr {
             BTErr::BTEr(ref e) => e.description(),
             BTErr::B64Err(ref e) => e.description(),
             BTErr::IOErr(ref e) => e.description(),
+            BTErr::UtfErr(ref e) => e.description(),
         }
     }
 }

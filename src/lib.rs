@@ -310,13 +310,29 @@ fn get_option(target: &str, options: &[FdwOpt]) -> Option<FdwOpt> {
     None
 }
 
+#[allow(non_snake_case)]
 #[derive(Debug, Serialize, Deserialize)]
 struct FdwRow {
-    row_key: String,
-    column: String,
-    column_qualifier: String,
-    timestamp: u64,
-    text_value: Option<String>
+    rowKey: String,
+    familyName: String,
+    qualifier: String,
+    value: String,
+    commitRow: bool
+}
+
+impl FdwRow {
+    fn from(json: serde_json::Value) -> Result<FdwRow, BTErr> {
+        let row: FdwRow = serde_json::from_value(json)?;
+        Ok(
+            FdwRow {
+                rowKey: String::from_utf8(row.rowKey.as_bytes().from_base64()?)?,
+                familyName: row.familyName,
+                qualifier: String::from_utf8(row.qualifier.as_bytes().from_base64()?)?,
+                value: String::from_utf8(row.value.as_bytes().from_base64()?)?,
+                commitRow: row.commitRow
+            }
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -564,7 +580,7 @@ struct FdwSelectData {
 // TODO: Error propagation
 impl From<serde_json::Value> for FdwSelectData {
     fn from(json: serde_json::Value) -> Self {
-//        println!("{:?}", json);
+        //        println!("{:?}", json);
         let mut r: Vec<FdwSelectData> = match serde_json::from_value(json) {
             Ok(x) => x,
             Err(e) => panic!(e)
@@ -575,6 +591,21 @@ impl From<serde_json::Value> for FdwSelectData {
 
 #[no_mangle]
 pub extern "C" fn bt_fdw_iterate_foreign_scan(state: *mut BtFdwState, node: *mut pg::ForeignScanState) {
+    match _iterate_foreign_scan(state, node) {
+        Ok(x) => match x {
+            Some(row) => Node::from(node).assign_slot(
+                match serde_json::to_string(&row) {
+                    Ok(x) => x,
+                    Err(e) => panic!(e)
+                }
+            ),
+            None => {}
+        },
+        Err(e) => panic!(e)
+    }
+}
+
+fn _iterate_foreign_scan(state: *mut BtFdwState, node: *mut pg::ForeignScanState) -> Result<Option<FdwRow>, BTErr> {
     let mut bt_fdw_state = unsafe {
         assert!(!state.is_null());
         &mut *state
@@ -585,28 +616,24 @@ pub extern "C" fn bt_fdw_iterate_foreign_scan(state: *mut BtFdwState, node: *mut
     };
     if !bt_fdw_state.has_data {
         let l = unsafe { LIMIT };
-        let data: serde_json::Value = match wraps::read_rows(bt_fdw_state.table(), token, l) {
-            Ok(x) => x,
-            Err(e) => panic!(e)
-        };
+        let data = wraps::read_rows(bt_fdw_state.table(), token, l)?;
         bt_fdw_state.data = FdwSelectData::from(data);
         bt_fdw_state.has_data = true
     }
 
     let row = bt_fdw_state.data.chunks.pop();
 
-    let mut node = Node::from(node);
+    let node = Node::from(node);
     unsafe {
         pg::ExecClearTuple(node.slot.expect("Expected TupleTableSlot, got None"));
     }
     println!("{:?}", row);
     match row {
-        Some(ref r) => match serde_json::to_string(r) {
-            Ok(s) => node.assign_slot(s),
-            Err(e) => panic!(e)
+        Some(r) => {
+            Ok(Some(FdwRow::from(r)?))
         },
         // leave slot empty, signal postgres everything is fetched
-        None => {}
+        None => Ok(None)
     }
 }
 
