@@ -50,7 +50,7 @@ btGetForeignRelSize(PlannerInfo *root,
                     Oid foreigntableid) {
     elog(LOG, "entering function %s", __func__);
 
-    baserel->rows = 500;
+    baserel->rows = 1;
 }
 
 static void
@@ -105,10 +105,10 @@ btGetForeignPlan(PlannerInfo *root,
 static void
 btExplainForeignScan(ForeignScanState *node, ExplainState *es) {
     /* TODO: calculate real values */
-    ExplainPropertyText("Foreign BT", "bt", es);
+    ExplainPropertyText("Foreign Bigtable", "bt", es);
 
     if (es->costs) {
-        ExplainPropertyLong("Foreign BT cost", 10, es);
+        ExplainPropertyLong("Foreign Bigtable, costs and row estiamtes are meaningless", 0, es);
     }
 }
 
@@ -208,7 +208,7 @@ btExecForeignInsert(EState *estate,
 
     char *res = TextDatumGetCString(val);
 
-    bt_fdw_exec_foreign_insert(st, slot, res);
+    bt_fdw_exec_foreign_insert(st, res);
 
     elog(DEBUG1, "entering function %s", __func__);
 

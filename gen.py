@@ -2,7 +2,7 @@ import json
 import random
 import string
 
-N_RECORDS = 1000 # number of records generated
+N_RECORDS = 10000 # number of records generated
 OUT_FILE = "test.sql"
 
 # Be sure to modify the `column key below`

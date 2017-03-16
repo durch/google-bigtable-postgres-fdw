@@ -16,6 +16,9 @@ While logic is contained in `Rust`, it leverages `PostgreSQL` `C` `FDW` callback
 - [ ] `UPDATE`
 - [ ] `DELETE`
 - [ ] `FOREIGN SCHEMA`, abandon funny `INSERT` format
+- [ ] Support for PG 9.3+
+- [ ] Useful `EXPLAIN`
+- [ ] Reduce `C` boilerplate
 
 ## Installation
 

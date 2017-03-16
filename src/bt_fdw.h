@@ -22,30 +22,17 @@
 #include "catalog/pg_foreign_table.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_user_mapping.h"
-/*
-  #include "catalog/pg_type.h"
-*/
 #include "commands/defrem.h"
 #include "commands/explain.h"
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
 #include "miscadmin.h"
-/*
-  #include "mb/pg_wchar.h"
-  #include "nodes/makefuncs.h"
-*/
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/planmain.h"
 #include "optimizer/restrictinfo.h"
-/*
-  #include "storage/fd.h"
-  #include "utils/array.h"
-*/
 #include "utils/builtins.h"
 #include "utils/rel.h"
-
-#define LENGTH(x) VARSIZE(x) - VARHDRSZ
 
 /*
  * Valid options that could be used by
@@ -95,7 +82,7 @@ extern void *
 bt_fdw_iterate_foreign_scan(bt_fdw_state_t *, ForeignScanState *);
 
 extern void *
-bt_fdw_exec_foreign_insert(bt_fdw_state_t *, TupleTableSlot *, char *);
+bt_fdw_exec_foreign_insert(bt_fdw_state_t *, char *);
 
 extern void *
 get_limit(PlannerInfo *);
