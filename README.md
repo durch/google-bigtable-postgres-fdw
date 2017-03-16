@@ -13,7 +13,7 @@ While logic is contained in `Rust`, it leverages `PostgreSQL C FDW` callbacks.
 - [ ] `SELECT OFFSET`
 - [ ] `SELECT WHERE`
 - [x] `INSERT`
-- [ ] `UPDATE`
+- [ ] `UPDATE` - update can be achived by inserting an existing key
 - [ ] `DELETE`
 - [ ] `FOREIGN SCHEMA`, abandon funny `INSERT` format
 - [ ] Support for PG 9.3+
