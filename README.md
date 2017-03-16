@@ -23,7 +23,7 @@ While logic is contained in `Rust`, it leverages `PostgreSQL C FDW` callbacks.
 ## Installation
 
 + `PostgreSQL 9.6+`
-+ `Stable Rust 1.15+`, get it using [rustup](https://www.rustup.rs/).
++ `stable Rust`, get it using [rustup](https://www.rustup.rs/).
 
 ```bash
 git clone https://github.com/durch/google-bigtable-postgres-fdw.git

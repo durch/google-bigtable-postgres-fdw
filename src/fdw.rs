@@ -11,7 +11,7 @@ use structs::*;
 use super::LIMIT;
 
 
-    pub fn _exec_foreign_insert(state: *mut BtFdwState,
+pub fn _exec_foreign_insert(state: *mut BtFdwState,
                             data: *const c_char) -> Result<()> {
     let bt_fdw_state = unsafe {
         assert!(!state.is_null());
@@ -25,7 +25,10 @@ use super::LIMIT;
     let t_data: Vec<String> = fdw_data.data.into_iter().map(
         |ref x| match serde_json::to_string(x) {
             Ok(x) => x,
-            Err(_) => {err_cnt += 1; String::from("")}
+            Err(_) => {
+                err_cnt += 1;
+                String::from("")
+            }
         }).collect();
     if err_cnt > 0 { bail!(("Failed to read all rows")) }
     let token = match bt_fdw_state.token {
@@ -91,11 +94,11 @@ pub fn bt_fdw_state_new<T>(curruser: pg::Oid, node: T) -> *mut BtFdwState
 }
 
 pub fn write_rows(data: Result<Vec<String>>,
-              family: Result<&str>,
-              qualifier: Result<&str>,
-              row_key: Option<&str>,
-              token: &Token,
-              table: Result<Table>) -> Result<CString> {
+                  family: Result<&str>,
+                  qualifier: Result<&str>,
+                  row_key: Option<&str>,
+                  token: &Token,
+                  table: Result<Table>) -> Result<CString> {
     let data = data?;
     let l = data.len();
     let qualifier = qualifier?;

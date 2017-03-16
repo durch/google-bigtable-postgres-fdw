@@ -29,6 +29,7 @@ mod fdw_error {
         }
     }
 }
+
 use fdw_error::Result;
 
 mod fdw;
