@@ -51,7 +51,7 @@ psql -U postgres < test.sql
 
 #### SELECT
 
-One Bigtable row per PG rowis returned, limit is done on the BT side, rows are returned as `json` and can be further manipulated using Postgres `json` [functions and operators](`https://www.postgresql.org/docs/9.6/static/functions-json.html`).
+One Bigtable row per PG rowis returned, limit is done on the BT side, rows are returned as `json` and can be further manipulated using Postgres [json functions and operators](`https://www.postgresql.org/docs/9.6/static/functions-json.html`).
 
 ```PLpgSQL
 SELECT * FROM test;
