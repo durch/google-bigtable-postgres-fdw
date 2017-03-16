@@ -231,7 +231,7 @@ btExecForeignUpdate(EState *estate,
 
 static TupleTableSlot *
 btExecForeignDelete(EState *estate,
-                    ReultRelInfo *rinfo,
+                    ResultRelInfo *rinfo,
                     TupleTableSlot *slot,
                     TupleTableSlot *planSlot) {
 
