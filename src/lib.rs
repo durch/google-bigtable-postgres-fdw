@@ -1,5 +1,7 @@
 extern crate libc;
 #[macro_use]
+extern crate error_chain;
+#[macro_use]
 extern crate serde_derive;
 extern crate bigtable as bt;
 extern crate serde_json;
@@ -21,7 +23,23 @@ use bt::utils::*;
 use bt::support::{Project, Instance, Table};
 use serde_json::Value;
 
-mod error;
+mod fdw_error {
+    error_chain! {
+        foreign_links {
+            FromUtf8(::std::string::FromUtf8Error);
+            Utf8(::std::str::Utf8Error);
+            Io(::std::io::Error);
+            Base64(::rustc_serialize::base64::FromBase64Error);
+            Auth(::goauth::error::GOErr);
+            Ffi(::std::ffi::NulError);
+            Bt(::bt::error::BTErr);
+            Json(::serde_json::Error);
+        }
+    }
+}
+
+use fdw_error::Result;
+
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
 #[allow(improper_ctypes)]
@@ -29,19 +47,17 @@ mod error;
 #[allow(non_upper_case_globals)]
 mod pg; // Generated PG bindings
 
-use error::BTErr;
-
 static mut LIMIT: Option<i64> = Some(0);
 
 fn get_ptr<'a>(p: *const c_char, l: usize) -> &'a [u8] {
     unsafe { &CStr::from_ptr(p).to_bytes()[0..l] }
 }
 
-fn str_from_ptr<'a>(p: *const c_char, l: usize) -> Result<&'a str, BTErr> {
+fn str_from_ptr<'a>(p: *const c_char, l: usize) -> Result<&'a str> {
     Ok(std::str::from_utf8(&get_ptr(p, l))?)
 }
 
-fn from_file(fp: &str) -> Result<Vec<u8>, BTErr> {
+fn from_file(fp: &str) -> Result<Vec<u8>> {
     let mut f = File::open(fp)?;
     let mut buffer = Vec::new();
     f.read_to_end(&mut buffer)?;
@@ -56,7 +72,7 @@ fn pg_return(c: CString) -> *mut pg::text {
     }
 }
 
-fn credentials_from_db(ptr: *const c_char, l: usize) -> Result<Credentials, BTErr> {
+fn credentials_from_db(ptr: *const c_char, l: usize) -> Result<Credentials> {
     Ok(Credentials::from_str(
         std::str::from_utf8(
             &str_from_ptr(ptr, l)?
@@ -65,24 +81,24 @@ fn credentials_from_db(ptr: *const c_char, l: usize) -> Result<Credentials, BTEr
     )?)
 }
 
-fn ptr_to_cstring(ptr: *const c_char, l: usize) -> Result<CString, BTErr> {
+fn ptr_to_cstring(ptr: *const c_char, l: usize) -> Result<CString> {
     let ptr_str = str_from_ptr(ptr, l)?;
     let buffer = from_file(ptr_str)?;
     Ok(CString::new(buffer.to_base64(STANDARD))?)
 }
 
-fn token_from_credential_ptr(credentials: *const c_char, l: usize) -> Result<Token, BTErr> {
+fn token_from_credential_ptr(credentials: *const c_char, l: usize) -> Result<Token> {
     let credentials = str_from_ptr(credentials, l)?.from_base64()?;
     Ok(get_auth_token(std::str::from_utf8(&credentials[..])?, false)?)
 }
 
-fn read_rows(table: Result<Table, BTErr>, token: &Token, lim: Option<i64>) -> Result<CString, BTErr> {
+fn read_rows(table: Result<Table>, token: &Token, lim: Option<i64>) -> Result<CString> {
     let rows = wraps::read_rows(table?, token, lim)?;
     let r = serde_json::to_string(&rows)?;
     Ok(CString::new(r)?)
 }
 
-fn format_input_data(rows: Result<&str, BTErr>, split_array: bool) -> Result<Vec<String>, BTErr> {
+fn format_input_data(rows: Result<&str>, split_array: bool) -> Result<Vec<String>> {
     let mut data: Vec<String> = Vec::new();
     let rows = rows?;
     if split_array {
@@ -102,12 +118,12 @@ fn format_input_data(rows: Result<&str, BTErr>, split_array: bool) -> Result<Vec
     Ok(data)
 }
 
-fn write_rows(data: Result<Vec<String>, BTErr>,
-              family: Result<&str, BTErr>,
-              qualifier: Result<&str, BTErr>,
+fn write_rows(data: Result<Vec<String>>,
+              family: Result<&str>,
+              qualifier: Result<&str>,
               row_key: Option<&str>,
               token: &Token,
-              table: Result<Table, BTErr>) -> Result<CString, BTErr> {
+              table: Result<Table>) -> Result<CString> {
     let data = data?;
     let l = data.len();
     let qualifier = qualifier?;
@@ -123,9 +139,11 @@ fn write_rows(data: Result<Vec<String>, BTErr>,
 
 #[no_mangle]
 pub extern "C" fn bt_rust_set_credentials(credentials: *const c_char, l: usize) -> *mut pg::text {
-    match ptr_to_cstring(credentials, l) {
-        Ok(x) => pg_return(x),
-        Err(e) => pg_return(e.into())
+    unsafe {
+        match ptr_to_cstring(credentials, l) {
+            Ok(x) => pg_return(x),
+            Err(e) => pg_return(CString::from_raw(e.description().as_ptr() as *mut i8))
+        }
     }
 }
 
@@ -140,9 +158,11 @@ pub extern "C" fn bt_rust_read_rows(lim: i64,
     let table_name = str_from_ptr(table_ptr, t_l);
     let table = bt_table(credentials, instance_name, table_name);
 
-    match read_rows(table, &token.unwrap(), Some(lim)) {
-        Ok(x) => pg_return(x),
-        Err(e) => pg_return(e.into())
+    unsafe {
+        match read_rows(table, &token.unwrap(), Some(lim)) {
+            Ok(x) => pg_return(x),
+            Err(e) => pg_return(CString::from_raw(e.description().as_ptr() as *mut i8))
+        }
     }
 }
 
@@ -168,16 +188,18 @@ pub extern "C" fn bt_rust_write_rows(c_family: *const c_char, f_l: usize,
 
     let data = format_input_data(rows, split_array);
 
-    match write_rows(data, familiy, qualifier, None, &token.unwrap(), table) {
-        Ok(x) => pg_return(x),
-        Err(e) => pg_return(e.into())
+    unsafe {
+        match write_rows(data, familiy, qualifier, None, &token.unwrap(), table) {
+            Ok(x) => pg_return(x),
+            Err(e) => pg_return(CString::from_raw(e.description().as_ptr() as *mut i8))
+        }
     }
 }
 
-fn bt_table(credentials: Result<Credentials, BTErr>,
-            instance_name: Result<&str, BTErr>,
-            table_name: Result<&str, BTErr>)
-            -> Result<Table, BTErr> {
+fn bt_table(credentials: Result<Credentials>,
+            instance_name: Result<&str>,
+            table_name: Result<&str>)
+            -> Result<Table> {
     let project = Project { name: credentials?.project() };
     let instance = Instance { project: project, name: String::from(instance_name?) };
     Ok(Table { instance: instance, name: String::from(table_name?) })
@@ -187,7 +209,7 @@ fn bt_table(credentials: Result<Credentials, BTErr>,
 
 #[derive(Debug)]
 pub struct BtFdwState {
-    token: Result<Token, BTErr>,
+    token: Result<Token>,
     user: FdwUser,
     has_data: bool,
     data: FdwSelectData
@@ -243,7 +265,7 @@ impl FdwUser {
         }
     }
 
-    fn authenticate(&self) -> Result<Token, BTErr> {
+    fn authenticate(&self) -> Result<Token> {
         Ok(get_auth_token(&self.options.first().unwrap().value, true)?)
     }
 }
@@ -321,7 +343,7 @@ struct FdwRow {
 }
 
 impl FdwRow {
-    fn from(json: serde_json::Value) -> Result<FdwRow, BTErr> {
+    fn from(json: serde_json::Value) -> Result<FdwRow> {
         let row: FdwRow = serde_json::from_value(json)?;
         Ok(
             FdwRow {
@@ -546,7 +568,7 @@ pub extern "C" fn bt_fdw_exec_foreign_insert(state: *mut BtFdwState, slot: *mut 
     let t_data: Vec<String> = fdw_data.data.into_iter().map(|ref x| serde_json::to_string(x).unwrap()).collect();
     let token = match bt_fdw_state.token {
         Ok(ref x) => x,
-        Err(ref e) => panic!(e)
+        Err(ref e) => panic!("Invalid token")
     };
     match write_rows(
         Ok(t_data),
@@ -605,14 +627,14 @@ pub extern "C" fn bt_fdw_iterate_foreign_scan(state: *mut BtFdwState, node: *mut
     }
 }
 
-fn _iterate_foreign_scan(state: *mut BtFdwState, node: *mut pg::ForeignScanState) -> Result<Option<FdwRow>, BTErr> {
+fn _iterate_foreign_scan(state: *mut BtFdwState, node: *mut pg::ForeignScanState) -> Result<Option<FdwRow>> {
     let mut bt_fdw_state = unsafe {
         assert!(!state.is_null());
         &mut *state
     };
     let token = match bt_fdw_state.token {
         Ok(ref x) => x,
-        Err(ref e) => panic!(e)
+        Err(ref e) => panic!("Invalid token")
     };
     if !bt_fdw_state.has_data {
         let l = unsafe { LIMIT };
@@ -638,7 +660,7 @@ fn _iterate_foreign_scan(state: *mut BtFdwState, node: *mut pg::ForeignScanState
 }
 
 
-fn sample_row_keys(token: &Token, table: Table) -> Result<serde_json::Value, BTErr> {
+fn sample_row_keys(token: &Token, table: Table) -> Result<serde_json::Value> {
     let req = BTRequest {
         base: None,
         table: table,
