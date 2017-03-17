@@ -17,29 +17,16 @@ pub fn _exec_foreign_insert(state: *mut BtFdwState,
         assert!(!state.is_null());
         &*state
     };
-    let fdw_data: FdwInsData = unsafe {
+    let fdw_data: Vec<wraps::Row> = unsafe {
         assert!(!data.is_null());
         serde_json::from_str(CStr::from_ptr(data).to_str()?)?
     };
-    let mut err_cnt = 0;
-    let t_data: Vec<String> = fdw_data.data.into_iter().map(
-        |ref x| match serde_json::to_string(x) {
-            Ok(x) => x,
-            Err(_) => {
-                err_cnt += 1;
-                String::from("")
-            }
-        }).collect();
-    if err_cnt > 0 { bail!(("Failed to read all rows")) }
     let token = match bt_fdw_state.token {
         Ok(ref x) => x,
         Err(_) => bail!("Invalid token")
     };
     write_rows(
-        Ok(t_data),
-        Ok(&fdw_data.column),
-        Ok(&fdw_data.column_qualifier),
-        Some(&fdw_data.row_key),
+        Ok(fdw_data),
         token,
         Ok(bt_fdw_state.table()?)
     )?;
@@ -78,12 +65,13 @@ pub fn _iterate_foreign_scan(state: *mut BtFdwState,
     }
 }
 
-pub fn bt_fdw_state_new<T>(curruser: pg::Oid, node: T) -> *mut BtFdwState
+pub fn bt_fdw_state_new<T>(node: T) -> *mut BtFdwState
     where Node: From<T> {
+//    unsafe {assert!(pg::GetUserId() == curruser)};
     let node = Node::from(node);
     let ftable = FdwTable::from(node.relation);
     let fserver = FdwServer::from(ftable);
-    let fuser = FdwUser::from(fserver, curruser);
+    let fuser = unsafe { FdwUser::from(fserver, pg::GetUserId())};
 
     Box::into_raw(Box::new(BtFdwState {
         token: fuser.authenticate(),
@@ -93,20 +81,13 @@ pub fn bt_fdw_state_new<T>(curruser: pg::Oid, node: T) -> *mut BtFdwState
     }))
 }
 
-pub fn write_rows(data: Result<Vec<String>>,
-                  family: Result<&str>,
-                  qualifier: Result<&str>,
-                  row_key: Option<&str>,
+pub fn write_rows(data: Result<Vec<wraps::Row>>,
                   token: &Token,
                   table: Result<Table>) -> Result<CString> {
-    let data = data?;
+    let mut data = data?;
     let l = data.len();
-    let qualifier = qualifier?;
-    let family = family?;
     let table = table?;
-    let table_name = table.name.clone();
 
-    let _ = wraps::bulk_write_rows(data, family, qualifier, row_key, token, table)?;
-    Ok(CString::new(format!("Wrote {} row(s) to {}, cf: {}, cq: {}",
-                            l, table_name, family, qualifier))?)
+    let _ = wraps::bulk_write_rows(&mut data, token, table)?;
+    Ok(CString::new(format!("Wrote {} row(s)", l))?)
 }

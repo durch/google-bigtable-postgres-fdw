@@ -309,9 +309,6 @@ impl From<*mut pg::ResultRelInfo> for Node {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FdwInsData {
-    pub row_key: String,
-    pub column: String,
-    pub column_qualifier: String,
     pub data: Vec<serde_json::Value>
 }
 

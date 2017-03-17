@@ -114,7 +114,7 @@ btExplainForeignScan(ForeignScanState *node, ExplainState *es) {
 
 static void
 btFdwBeginForeignScan(ForeignScanState *node, int eflags) {
-    bt_fdw_state_t *st = bt_fdw_state_from_fss(GetUserId(), node);
+    bt_fdw_state_t *st = bt_fdw_state_from_fss(node);
 
 //    elog(LOG, "entering function %s", __func__);
 
@@ -178,7 +178,7 @@ btBeginForeignModify(ModifyTableState *mtstate,
                      int subplan_index,
                      int eflags) {
 
-    bt_fdw_state_t *st = bt_fdw_state_from_relinfo(GetUserId(), rinfo);
+    bt_fdw_state_t *st = bt_fdw_state_from_relinfo(rinfo);
 
     elog(LOG, "entering function %s", __func__);
 

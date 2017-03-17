@@ -8,13 +8,13 @@ use super::LIMIT;
 
 // Generics are hard in C :)
 #[no_mangle]
-pub extern "C" fn bt_fdw_state_from_fss(curruser: pg::Oid, fss: *mut pg::ForeignScanState) -> *mut BtFdwState {
-    bt_fdw_state_new(curruser, fss)
+pub extern "C" fn bt_fdw_state_from_fss(fss: *mut pg::ForeignScanState) -> *mut BtFdwState {
+    bt_fdw_state_new(fss)
 }
 
 #[no_mangle]
-pub extern "C" fn bt_fdw_state_from_relinfo(curruser: pg::Oid, rinfo: *mut pg::ResultRelInfo) -> *mut BtFdwState {
-    bt_fdw_state_new(curruser, rinfo)
+pub extern "C" fn bt_fdw_state_from_relinfo(rinfo: *mut pg::ResultRelInfo) -> *mut BtFdwState {
+    bt_fdw_state_new(rinfo)
 }
 
 #[no_mangle]

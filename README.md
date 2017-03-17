@@ -15,7 +15,6 @@ While logic is contained in `Rust`, it leverages `PostgreSQL C FDW` callbacks.
 - [x] `INSERT`
 - [ ] `UPDATE` - update can be achived by inserting an existing key
 - [ ] `DELETE`
-- [ ] `FOREIGN SCHEMA`, abandon funny `INSERT` format
 - [ ] Support for PG 9.3+
 - [ ] Useful `EXPLAIN`
 - [ ] Reduce `C` boilerplate
@@ -63,20 +62,18 @@ SELECT bt->'familyName', bt->'qualifier' FROM test WHERE bt->>'rowKey' = 'exact'
 
 #### INSERT
 
-`INSERT` format is a bit weird ATM:
+`INSERT` takes a `json` array of rows as defined in [core BT lib]("https://github.com/durch/rust-bigtable/blob/master/src/wraps.rs#L21"):
 
 ```json
-
-{
-    "row_key": string,
-    "column": string,
-    "column_qualifier": string,
-    "data": [
-        json
-    ]
-}
-
+[
+    {
+        "row_key": "string",
+        "family": "string",
+        "qualifier": "string",
+        "value": "string"
+    }
+]
 ```
 
-Currently `row_key` is treated as a prefix and concated with a loop counter, while this covers a few use cases it is not really ideal for Bigtable. This will likely be extended to allow passing of a `row_key` array. As you are passing in one `json` object which gets expanded, `INSERT` counter always shows one row inserted, truth can be found in PG logs.
+As you are passing in one `json` object which gets expanded, `INSERT` counter always shows one row inserted, truth can be found in PG logs.
 

@@ -73,10 +73,10 @@ typedef struct {
 typedef struct bt_fdw_state_S bt_fdw_state_t;
 
 extern bt_fdw_state_t *
-bt_fdw_state_from_fss(Oid, ForeignScanState *);
+bt_fdw_state_from_fss(ForeignScanState *);
 
 extern bt_fdw_state_t *
-bt_fdw_state_from_relinfo(Oid, ResultRelInfo *);
+bt_fdw_state_from_relinfo(ResultRelInfo *);
 
 extern void *
 bt_fdw_iterate_foreign_scan(bt_fdw_state_t *, ForeignScanState *);
