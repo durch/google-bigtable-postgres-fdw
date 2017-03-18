@@ -8,6 +8,10 @@ use serde_json;
 use std::ffi::{CString, CStr};
 use structs::*;
 
+use bt::method::SampleRowKeys;
+use bt::request::BTRequest;
+
+
 use super::LIMIT;
 
 
@@ -56,6 +60,8 @@ pub fn _iterate_foreign_scan(state: *mut BtFdwState,
     unsafe {
         pg::ExecClearTuple(node.slot.expect("Expected TupleTableSlot, got None"));
     }
+//    let _ = sample_row_keys(token, bt_fdw_state.table()?);
+    println!("{:?}", row);
     match row {
         Some(r) => {
             Ok(Some(FdwRow::from(r)?))
@@ -67,11 +73,11 @@ pub fn _iterate_foreign_scan(state: *mut BtFdwState,
 
 pub fn bt_fdw_state_new<T>(node: T) -> *mut BtFdwState
     where Node: From<T> {
-//    unsafe {assert!(pg::GetUserId() == curruser)};
+    //    unsafe {assert!(pg::GetUserId() == curruser)};
     let node = Node::from(node);
     let ftable = FdwTable::from(node.relation);
     let fserver = FdwServer::from(ftable);
-    let fuser = unsafe { FdwUser::from(fserver, pg::GetUserId())};
+    let fuser = unsafe { FdwUser::from(fserver, pg::GetUserId()) };
 
     Box::into_raw(Box::new(BtFdwState {
         token: fuser.authenticate(),
@@ -90,4 +96,21 @@ pub fn write_rows(data: Result<Vec<wraps::Row>>,
 
     let _ = wraps::bulk_write_rows(&mut data, token, table)?;
     Ok(CString::new(format!("Wrote {} row(s)", l))?)
+}
+
+fn sample_row_keys(token: &Token, table: Table) -> Result<serde_json::Value> {
+    let mut req = BTRequest {
+        base: None,
+        table: table.clone(),
+        method: SampleRowKeys::new()
+    };
+
+    req.method.payload.set_table_name(format!("projects/{}/instances/{}/tables/{}",
+                                              table.instance.project.name,
+                                              table.instance.name,
+                                              table.name));
+    println!("{:?}", req.method.payload.get_table_name());
+    let response = req.execute(token)?;
+    println!("{:?}", response);
+    Ok(response)
 }

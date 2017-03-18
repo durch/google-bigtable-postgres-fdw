@@ -9,12 +9,6 @@ extern crate serde_json;
 extern crate protobuf;
 extern crate rustc_serialize;
 
-
-use bt::method::SampleRowKeys;
-use bt::request::BTRequest;
-use bt::support::Table;
-use goauth::auth::Token;
-
 mod fdw_error {
     error_chain! {
         foreign_links {
@@ -30,9 +24,8 @@ mod fdw_error {
     }
 }
 
-use fdw_error::Result;
-
 mod fdw;
+#[allow(unused_variables)]
 pub mod ffi;
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
@@ -43,13 +36,3 @@ mod pg; // Generated PG bindings
 mod structs;
 
 static mut LIMIT: Option<i64> = Some(0);
-
-fn sample_row_keys(token: &Token, table: Table) -> Result<serde_json::Value> {
-    let req = BTRequest {
-        base: None,
-        table: table,
-        method: SampleRowKeys::new()
-    };
-    let response = req.execute(token)?;
-    Ok(response)
-}
