@@ -1,10 +1,21 @@
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/durch/rpg_base36/blob/master/LICENSE.md)
 
-# Google Bigtable Rust PostgreSQL FDW
+## Google Bigtable Rust PostgreSQL FDW
 
 [Rust](https://www.rust-lang.org/en-US/) [PostgreSQL](https://www.postgresql.org/) foreign data wrapper for interfacing with [Google Cloud Bigtable](https://cloud.google.com/bigtable/), as well as other API compatible databases ([HBase](https://hbase.apache.org/) should work with some effort).
 
 While logic is contained in `Rust`, it leverages `PostgreSQL C FDW` callbacks.
+
+### Quick start
+
+You can get up and running quickly with PG + Rust setup using `docker-compose`.
+
+```bash
+docker-compose up -d
+docker exec -it `docker ps | grep btpgext_vm | awk '{print $1}'` /bin/bash
+```
+
+This will setup staticly linked Rust 1.16 and PG 9.6 in an Ubuntu Xenial image, and get you in, where you can run `make install` and start playing.
 
 ### Roadmap
 
@@ -76,14 +87,3 @@ SELECT bt->'familyName', bt->'qualifier' FROM test WHERE bt->>'rowKey' = 'exact'
 ```
 
 As you are passing in one `json` object which gets expanded, `INSERT` counter always shows one row inserted, truth can be found in PG logs.
-
-## Environment setup
-
-You can get up and running quickly with PG + Rust setup using `docker-compose`.
-
-```bash
-docker-compose up -d
-docker exec -it `docker ps | grep btpgext_vm | awk '{print $1}'` /bin/bash
-```
-
-This will setup staticly linked Rust 1.16 and PG 9.6 in an Ubuntu Xenial image, and get you in, where you can run `make install` and start playing.
