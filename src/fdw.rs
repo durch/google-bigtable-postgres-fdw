@@ -61,7 +61,6 @@ pub fn _iterate_foreign_scan(state: *mut BtFdwState,
         pg::ExecClearTuple(node.slot.expect("Expected TupleTableSlot, got None"));
     }
 //    let _ = sample_row_keys(token, bt_fdw_state.table()?);
-    println!("{:?}", row);
     match row {
         Some(r) => {
             Ok(Some(FdwRow::from(r)?))

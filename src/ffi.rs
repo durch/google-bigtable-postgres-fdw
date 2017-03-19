@@ -10,6 +10,27 @@ use std::error::Error;
 use super::LIMIT;
 
 #[no_mangle]
+pub unsafe extern "C" fn fdw_assign_callbacks(fdw_routine: *mut FdwRoutine) {
+    (*fdw_routine).GetForeignRelSize = Some(bt_fdw_get_foreign_rel_size);
+    (*fdw_routine).GetForeignPaths = Some(bt_fdw_get_foreign_paths);
+    (*fdw_routine).GetForeignPlan = Some(bt_fdw_get_foreign_plan);
+    (*fdw_routine).ExplainForeignScan = Some(bt_fdw_explain_foreign_scan);
+    (*fdw_routine).BeginForeignScan = Some(bt_fdw_begin_foreign_scan);
+    (*fdw_routine).IterateForeignScan = Some(bt_fdw_iterate_foreign_scan);
+    (*fdw_routine).ReScanForeignScan = Some(bt_fdw_rescan_foreign_scan);
+    (*fdw_routine).EndForeignScan = Some(bt_fdw_end_foreign_scan);
+    (*fdw_routine).AnalyzeForeignTable = None;
+    (*fdw_routine).IsForeignRelUpdatable = Some(bt_is_foreign_rel_updatable);
+    (*fdw_routine).AddForeignUpdateTargets = Some(bt_fdw_add_foreign_update_targets);
+    (*fdw_routine).PlanForeignModify = Some(bt_fdw_plan_foreign_modify);
+    (*fdw_routine).BeginForeignModify = Some(bt_fdw_begin_foreign_modify);
+    (*fdw_routine).ExecForeignInsert = Some(bt_fdw_exec_foreign_insert);
+    (*fdw_routine).ExecForeignUpdate = Some(bt_fdw_exec_foreign_update);
+    (*fdw_routine).ExecForeignDelete = Some(bt_fdw_exec_foreign_delete);
+    (*fdw_routine).EndForeignModify = Some(bt_fdw_end_foreign_modify);
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn bt_is_foreign_rel_updatable(rel: Relation) -> i32 {
     (0 << CmdType::CMD_UPDATE as u8) | (1 << CmdType::CMD_INSERT as u8) | (0 << CmdType::CMD_DELETE as u8)
 }
@@ -49,7 +70,7 @@ pub unsafe extern "C" fn bt_fdw_plan_foreign_modify(root: *mut PlannerInfo,
 #[no_mangle]
 pub unsafe extern "C" fn bt_fdw_add_foreign_update_targets(parsetree: *mut Query,
                                                            target_rte: *mut RangeTblEntry,
-                                                           target_relation: *mut Relation) {}
+                                                           target_relation: *mut RelationData) {}
 
 #[no_mangle]
 pub unsafe extern "C" fn bt_fdw_begin_foreign_modify(mtable: *mut ModifyTableState,
@@ -192,6 +213,6 @@ pub extern "C" fn bt_fdw_iterate_foreign_scan(node: *mut ForeignScanState) -> *m
 }
 
 fn return_err<T: Error>(e: T) -> String {
-    serde_json::to_string(e.description())
+    serde_json::to_string(&format!("{}: {:?}", e.description(), e.cause()))
         .unwrap_or(String::from("An unknown error has occured."))
 }

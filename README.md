@@ -17,7 +17,7 @@ While logic is contained in `Rust`, it leverages `PostgreSQL C FDW` callbacks.
 - [ ] `DELETE`
 - [ ] Support for PG 9.3+
 - [ ] Useful `EXPLAIN`
-- [ ] Reduce `C` boilerplate
+- [x] Reduce `C` boilerplate
 
 ## Installation
 
