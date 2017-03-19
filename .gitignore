@@ -3,10 +3,7 @@ Cargo.lock
 .idea/
 *.so
 sql/*--0*.sql
-/docker-compose.yml
-/Dockerfile
 /drazens-bigtable-testing.pk
-!/drazens-bigtable-testing-9f32bd2aa193.json
 /drazens-bigtable-testing-9f32bd2aa193.json
 cmake-build-debug/
 src/pg.rs

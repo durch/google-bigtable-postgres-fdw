@@ -1,0 +1,13 @@
+# Lazy entrypoint substitution :)
+version: "2"
+services:
+  vm:
+    build: .
+    ports:
+      - "5433:5432"
+    volumes:
+      - .:/tmp/code
+    tty: true
+#    I don't really like this way of doing things, but you need root to make and stuff...
+    user: root
+    command: su - postgres  -c "/usr/lib/postgresql/9.6/bin/postgres -D /var/lib/postgresql/9.6/main -c config_file=/etc/postgresql/9.6/main/postgresql.conf"
