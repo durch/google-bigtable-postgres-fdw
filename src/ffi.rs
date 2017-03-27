@@ -9,25 +9,32 @@ use std::error::Error;
 
 use super::LIMIT;
 
+
+/// This function might be called a number of times. In particular, it is
+/// likely to be called for each INSERT statement. For an explanation, see
+/// core postgres file src/optimizer/plan/createplan.c where it calls
+/// GetFdwRoutineByRelId(().
 #[no_mangle]
 pub unsafe extern "C" fn fdw_assign_callbacks(fdw_routine: *mut FdwRoutine) {
-    (*fdw_routine).GetForeignRelSize = Some(bt_fdw_get_foreign_rel_size);
-    (*fdw_routine).GetForeignPaths = Some(bt_fdw_get_foreign_paths);
-    (*fdw_routine).GetForeignPlan = Some(bt_fdw_get_foreign_plan);
-    (*fdw_routine).ExplainForeignScan = Some(bt_fdw_explain_foreign_scan);
-    (*fdw_routine).BeginForeignScan = Some(bt_fdw_begin_foreign_scan);
-    (*fdw_routine).IterateForeignScan = Some(bt_fdw_iterate_foreign_scan);
-    (*fdw_routine).ReScanForeignScan = Some(bt_fdw_rescan_foreign_scan);
-    (*fdw_routine).EndForeignScan = Some(bt_fdw_end_foreign_scan);
+    // Required by notations: S=SELECT I=INSERT U=UPDATE D=DELETE
+
+    (*fdw_routine).GetForeignRelSize = Some(bt_fdw_get_foreign_rel_size);               // S U D
+    (*fdw_routine).GetForeignPaths = Some(bt_fdw_get_foreign_paths);                    // S U D
+    (*fdw_routine).GetForeignPlan = Some(bt_fdw_get_foreign_plan);                      // S U D
+    (*fdw_routine).ExplainForeignScan = Some(bt_fdw_explain_foreign_scan);              // S U D
+    (*fdw_routine).BeginForeignScan = Some(bt_fdw_begin_foreign_scan);                  // S U D
+    (*fdw_routine).IterateForeignScan = Some(bt_fdw_iterate_foreign_scan);              // S
+    (*fdw_routine).ReScanForeignScan = Some(bt_fdw_rescan_foreign_scan);                // S
+    (*fdw_routine).EndForeignScan = Some(bt_fdw_end_foreign_scan);                      // S
     (*fdw_routine).AnalyzeForeignTable = None;
     (*fdw_routine).IsForeignRelUpdatable = Some(bt_is_foreign_rel_updatable);
-    (*fdw_routine).AddForeignUpdateTargets = Some(bt_fdw_add_foreign_update_targets);
-    (*fdw_routine).PlanForeignModify = Some(bt_fdw_plan_foreign_modify);
-    (*fdw_routine).BeginForeignModify = Some(bt_fdw_begin_foreign_modify);
-    (*fdw_routine).ExecForeignInsert = Some(bt_fdw_exec_foreign_insert);
-    (*fdw_routine).ExecForeignUpdate = Some(bt_fdw_exec_foreign_update);
-    (*fdw_routine).ExecForeignDelete = Some(bt_fdw_exec_foreign_delete);
-    (*fdw_routine).EndForeignModify = Some(bt_fdw_end_foreign_modify);
+    (*fdw_routine).AddForeignUpdateTargets = Some(bt_fdw_add_foreign_update_targets);   // U D
+    (*fdw_routine).PlanForeignModify = Some(bt_fdw_plan_foreign_modify);                // I U D
+    (*fdw_routine).BeginForeignModify = Some(bt_fdw_begin_foreign_modify);              // I U D
+    (*fdw_routine).ExecForeignInsert = Some(bt_fdw_exec_foreign_insert);                // I
+    (*fdw_routine).ExecForeignUpdate = Some(bt_fdw_exec_foreign_update);                // U
+    (*fdw_routine).ExecForeignDelete = Some(bt_fdw_exec_foreign_delete);                // D
+    (*fdw_routine).EndForeignModify = Some(bt_fdw_end_foreign_modify);                  // I U D
 }
 
 #[no_mangle]
@@ -91,6 +98,21 @@ pub extern "C" fn bt_fdw_rescan_foreign_scan(node: *mut ForeignScanState) {}
 #[no_mangle]
 pub extern "C" fn bt_fdw_end_foreign_scan(node: *mut ForeignScanState) {}
 
+
+/// Obtain relation size estimates for a foreign table. This is called at
+/// the beginning of planning for a query that scans a foreign table. root
+/// is the planner's global information about the query; baserel is the
+/// planner's information about this table; and foreigntableid is the
+/// pg_class OID of the foreign table. (foreigntableid could be obtained
+/// from the planner data structures, but it's passed explicitly to save
+/// effort.)
+///
+/// This function should update baserel->rows to be the expected number of
+/// rows returned by the table scan, after accounting for the filtering
+/// done by the restriction quals. The initial value of baserel->rows is
+/// just a constant default estimate, which should be replaced if at all
+/// possible. The function may also choose to update baserel->width if it
+/// can compute a better estimate of the average result row width.
 #[no_mangle]
 pub unsafe extern "C" fn bt_fdw_get_foreign_rel_size(root: *mut PlannerInfo,
                                                      baserel: *mut RelOptInfo,
@@ -98,6 +120,18 @@ pub unsafe extern "C" fn bt_fdw_get_foreign_rel_size(root: *mut PlannerInfo,
     (*baserel).rows = 1.;
 }
 
+/// Create possible access paths for a scan on a foreign table. This is
+/// called during query planning. The parameters are the same as for
+/// GetForeignRelSize, which has already been called.
+///
+/// This function must generate at least one access path (ForeignPath node)
+/// for a scan on the foreign table and must call add_path to add each such
+/// path to baserel->pathlist. It's recommended to use
+/// create_foreignscan_path to build the ForeignPath nodes. The function
+/// can generate multiple access paths, e.g., a path which has valid
+/// pathkeys to represent a pre-sorted result. Each access path must
+/// contain cost estimates, and can contain any FDW-private information
+/// that is needed to identify the specific scan method intended.
 #[no_mangle]
 pub unsafe extern "C" fn bt_fdw_get_foreign_paths(root: *mut PlannerInfo,
                                                   baserel: *mut RelOptInfo,
@@ -181,17 +215,20 @@ pub unsafe extern "C" fn bt_fdw_exec_foreign_insert(estate: *mut EState,
                                                     rinfo: *mut ResultRelInfo,
                                                     slot: *mut TupleTableSlot,
                                                     plan_slot: *mut TupleTableSlot) -> *mut TupleTableSlot {
+    let mut node = Node::from(rinfo);
     let mut isnull: bool_ = 0;
     let val = slot_getattr(slot, 1, &mut isnull);
     let data = text_to_cstring(val as *const varlena);
-    let _ = _exec_foreign_insert((*rinfo).ri_FdwState as *mut BtFdwState, data);
-    slot
+    let inserted = match _exec_foreign_insert((*rinfo).ri_FdwState as *mut BtFdwState, data) {
+        Ok(ref x) => serde_json::to_string(x).unwrap_or(String::from("Failed to process return value.")),
+        Err(e) => String::from("Failed to get insert count.")
+    };
+    println!("{}", inserted);
+    node.slot = Some(slot);
+    ExecClearTuple(node.slot.expect("Expected TupleTableSlot, got None."));
+    node.assign_slot(inserted);
+    node.slot.unwrap()
 }
-
-//#[no_mangle]
-//pub extern "C" fn bt_fdw_exec_foreign_insert2(state: *mut BtFdwState, data: *const c_char) {
-//    let _ = _exec_foreign_insert(state, data);
-//}
 
 #[no_mangle]
 pub extern "C" fn bt_fdw_iterate_foreign_scan(node: *mut ForeignScanState) -> *mut TupleTableSlot {

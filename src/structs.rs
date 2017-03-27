@@ -1,6 +1,6 @@
 use bt::support::{Project, Instance, Table};
 use bt::utils::*;
-use fdw_error::Result;
+use fdw_error::{Result};
 use goauth::auth::Token;
 use goauth::credentials::Credentials;
 use libc::c_int;
@@ -149,27 +149,57 @@ fn get_option(target: &str, options: &[FdwOpt]) -> Option<FdwOpt> {
 #[allow(non_snake_case)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FdwRow {
-    rowKey: String,
-    familyName: String,
-    qualifier: String,
-    value: String,
-    commitRow: bool
+    rowKey: Option<String>,
+    timestampMicros: Option<String>,
+    familyName: Option<String>,
+    qualifier: Option<String>,
+    value: Option<String>,
+    commitRow: Option<bool>
+}
+
+fn unwrap_raw(val: Option<String>) -> Result<Option<String>> {
+    match val {
+        Some(x) => Ok(Some(
+            String::from_utf8(x.as_bytes().from_base64()?)?
+        )),
+        None => Ok(None)
+    }
 }
 
 impl FdwRow {
     pub fn from(json: serde_json::Value) -> Result<FdwRow> {
+//        println!("{:?}", json);
         let row: FdwRow = serde_json::from_value(json)?;
         Ok(
             FdwRow {
-                rowKey: String::from_utf8(row.rowKey.as_bytes().from_base64()?)?,
+                rowKey: unwrap_raw(row.rowKey)?,
                 familyName: row.familyName,
-                qualifier: String::from_utf8(row.qualifier.as_bytes().from_base64()?)?,
-                value: String::from_utf8(row.value.as_bytes().from_base64()?)?,
-                commitRow: row.commitRow
+                qualifier: unwrap_raw(row.qualifier)?,
+                value: unwrap_raw(row.value)?,
+                commitRow: row.commitRow,
+                timestampMicros: row.timestampMicros
             }
         )
     }
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReturnEntries {
+    pub entries: Vec<InsertReturnEntry>
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InsertReturnEntry {
+    pub index: Option<String>,
+    pub status: Option<serde_json::Value>
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InsertCnt {
+    pub count: usize,
+    pub meta: String
+}
+
 
 #[derive(Debug, Clone)]
 pub struct FdwOpt {
@@ -332,7 +362,7 @@ fn extract_options(opts: *mut pg::List, opts_to_get: Option<&[String]>) -> Vec<F
                     Some(o) => out_opts.push(o),
                     None => {}
                 }
-            },
+            }
             None => out_opts.push(opt)
         }
     }

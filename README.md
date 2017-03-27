@@ -86,4 +86,23 @@ SELECT bt->'familyName', bt->'qualifier' FROM test WHERE bt->>'rowKey' = 'exact'
 ]
 ```
 
-As you are passing in one `json` object which gets expanded, `INSERT` counter always shows one row inserted, truth can be found in PG logs.
+As you are passing in one `json` object which gets inserted using one `HTTP` request, `INSERT` counter always shows one row inserted, the real number of rows can be accessed using `RETURNING` clause.
+
+```PLpgSQL
+-- assuming default column name from the conf snippet above:
+INSERT INTO test VALUES (
+        '[
+           {
+             "value": "{\"id\": \"6vh22634bst6ysowcquxwd57e15cudr7\", \"lat\": 27, \"lng\": -169)}",
+             "qualifier": "test",
+             "family": "cf1",
+             "row_key": "8xhxbop9azuufgxp"
+           }
+         ]'
+    ) RETURNING bt;
+
+           bt
+-------------------------
+{"count":1,"meta":"Ok"}
+(1 row)
+```

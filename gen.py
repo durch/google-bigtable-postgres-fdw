@@ -17,8 +17,8 @@ def coord_gen(rng=90):
 
 if __name__ == "__main__":
     l = [{"row_key": id_gen(16), "family": 'cf1', "qualifier": 'test',
-          "value": '{"id": %s, "lat": %d, ''"lng": %d)}' % (id_gen(32), coord_gen(90), coord_gen(180))}
+          "value": '{"id": "%s", "lat": %d, "lng": %d)}' % (id_gen(32), coord_gen(90), coord_gen(180))}
          for _ in range(N_RECORDS)]
 
     with open(OUT_FILE, "wb") as fp:
-        fp.write("insert into test values('{}');".format(json.dumps(l)))
+        fp.write("insert into test values('{}') returning bt;".format(json.dumps(l)))

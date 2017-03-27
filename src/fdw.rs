@@ -1,14 +1,14 @@
 use bt::support::Table;
 use bt::wraps;
-use fdw_error::Result;
+use fdw_error::{Result};
 use goauth::auth::Token;
-use libc::c_char;
+use libc::{c_char};
 use pg;
 use serde_json;
-use std::ffi::{CString, CStr};
+use std::ffi::CStr;
 use structs::*;
 
-use bt::method::SampleRowKeys;
+use bt::method::{SampleRowKeys};
 use bt::request::BTRequest;
 
 
@@ -16,7 +16,7 @@ use super::LIMIT;
 
 
 pub fn _exec_foreign_insert(state: *mut BtFdwState,
-                            data: *const c_char) -> Result<()> {
+                            data: *const c_char) -> Result<InsertCnt> {
     let bt_fdw_state = unsafe {
         assert!(!state.is_null());
         &*state
@@ -29,12 +29,17 @@ pub fn _exec_foreign_insert(state: *mut BtFdwState,
         Ok(ref x) => x,
         Err(_) => bail!("Invalid token")
     };
-    write_rows(
+    let inserted = write_rows(
         Ok(fdw_data),
         token,
         Ok(bt_fdw_state.table()?)
     )?;
-    Ok(())
+//    println!("{:?}", inserted);
+    let val: Vec<ReturnEntries> = serde_json::from_str(&inserted)?;
+    match val.first() {
+        Some(f) => Ok(InsertCnt { count: f.entries.len(), meta: String::from("Ok") }),
+        None => Ok(InsertCnt { count: 0, meta: String::from("No entries vector.") })
+    }
 }
 
 pub fn _iterate_foreign_scan(state: *mut BtFdwState,
@@ -60,11 +65,11 @@ pub fn _iterate_foreign_scan(state: *mut BtFdwState,
     unsafe {
         pg::ExecClearTuple(node.slot.expect("Expected TupleTableSlot, got None"));
     }
-//    let _ = sample_row_keys(token, bt_fdw_state.table()?);
+    //    let _ = sample_row_keys(token, bt_fdw_state.table()?);
     match row {
         Some(r) => {
             Ok(Some(FdwRow::from(r)?))
-        },
+        }
         // leave slot empty, signal postgres everything is fetched
         None => Ok(None)
     }
@@ -88,13 +93,11 @@ pub fn bt_fdw_state_new<T>(node: T) -> *mut BtFdwState
 
 pub fn write_rows(data: Result<Vec<wraps::Row>>,
                   token: &Token,
-                  table: Result<Table>) -> Result<CString> {
+                  table: Result<Table>) -> Result<String> {
     let mut data = data?;
-    let l = data.len();
     let table = table?;
 
-    let _ = wraps::bulk_write_rows(&mut data, token, table)?;
-    Ok(CString::new(format!("Wrote {} row(s)", l))?)
+    Ok(wraps::bulk_write_rows(&mut data, token, table)?)
 }
 
 fn sample_row_keys(token: &Token, table: Table) -> Result<serde_json::Value> {
@@ -108,8 +111,8 @@ fn sample_row_keys(token: &Token, table: Table) -> Result<serde_json::Value> {
                                               table.instance.project.name,
                                               table.instance.name,
                                               table.name));
-    println!("{:?}", req.method.payload.get_table_name());
+//    println!("{:?}", req.method.payload.get_table_name());
     let response = req.execute(token)?;
-    println!("{:?}", response);
+//    println!("{:?}", response);
     Ok(response)
 }
